@@ -26,7 +26,7 @@ See `/docs/agents.md` for full voice specifications and example dialogue.
 
 ## Stack
 
-- **Frontend:** Next.js 15 (App Router), TypeScript strict mode, Tailwind, shadcn/ui
+- **Frontend:** Next.js 16 (App Router), TypeScript strict mode, Tailwind v4, shadcn/ui (base-nova preset, neutral base color, @base-ui/react primitives)
 - **Backend:** Next.js API routes (no separate service in V1)
 - **Database:** Supabase (Postgres + Auth + RLS)
 - **LLM:** Anthropic API directly. Claude Haiku 4.5 for replay generation. Claude Sonnet for project-shaping (richer reasoning needed).
@@ -50,7 +50,7 @@ See `/docs/agents.md` for full voice specifications and example dialogue.
 
 Goal: signup → agent selection → empty profile page, deployed.
 
-Status: Not started.
+Status: Scaffold complete (2026-05-26). Next.js 16 + TS strict + Tailwind v4 + shadcn/ui (base-nova) + Supabase clients (`lib/db/server.ts`, `lib/db/browser.ts`) in place. Dev server runs, hello-world boot-check page renders at `/`, Supabase client instantiates with placeholder env. `.env.local` holds placeholders — swap for real Supabase project URL/anon key before building auth. Not yet deployed to Vercel. Next: magic-link signup → agent picker → profile page.
 
 ## What We Are NOT Building In V1
 
