@@ -47,10 +47,10 @@ See `/docs/agents.md` for full voice specifications and example dialogue.
 ## Current Milestone
 
 **Milestone 1: The Walking Skeleton (Week 1)**
+Status: COMPLETE — scaffold verified, dev server running, Supabase clients connected. Vercel deploy deferred to after M2.
 
-Goal: signup → agent selection → empty profile page, deployed.
-
-Status: Scaffold complete (2026-05-26). Next.js 16 + TS strict + Tailwind v4 + shadcn/ui (base-nova) + Supabase clients (`lib/db/server.ts`, `lib/db/browser.ts`) in place. Dev server runs, hello-world boot-check page renders at `/`, Supabase client instantiates with placeholder env. `.env.local` holds placeholders — swap for real Supabase project URL/anon key before building auth. Not yet deployed to Vercel. Next: magic-link signup → agent picker → profile page.
+**Milestone 2: The Agent System Prompt (Week 2)** ← NOW ACTIVE
+Goal: generate a system prompt for each of the three agents that the user can copy into Claude/ChatGPT/etc.
 
 ## What We Are NOT Building In V1
 
@@ -93,3 +93,7 @@ At the end of every session:
 - Mocking the LLM responses for QA in ways that hide voice drift — voice QA must hit the real API.
 - Adding generic error messages. Errors speak in agent voice.
 - "Cleaning up" the system prompt construction code to be more abstract before we have three real use cases.
+
+## Next.js Version Note
+
+We are on Next 16.2.6, not Next 15. See AGENTS.md for known API differences. When in doubt about a Next API, check the local node_modules docs before assuming training-data behavior is correct.
