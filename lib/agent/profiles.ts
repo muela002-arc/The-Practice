@@ -44,3 +44,19 @@ export const SESSION_OPENERS: Record<AgentType, string> = {
   vela: "Copy this into your AI tool, then consider what you are actually trying to build before you begin.",
   iris: "Copy this. Read it back. Verify you understand what I will refuse to do.",
 };
+
+// Voice-shaped prompts rendered above the brief textarea on /project/new.
+// Sets the tone the user is being asked to write into.
+export const PROJECT_BRIEFING_OPENERS: Record<AgentType, string> = {
+  atlas: "Describe what you want to build. One paragraph. I will cut it into operations.",
+  vela: "Tell me what you are trying to make, and we will think through the shape of it before I cut anything.",
+  iris: "Describe the project. I will look for what could go wrong before I shape it.",
+};
+
+// Loading copy shown on the submit button while the Sonnet shaping call runs
+// (10-15s). Voice-shaped per agent.
+export const SHAPING_LOADING_MESSAGES: Record<AgentType, string> = {
+  atlas: "Working.",
+  vela: "Let me think about this.",
+  iris: "Checking the shape of this.",
+};

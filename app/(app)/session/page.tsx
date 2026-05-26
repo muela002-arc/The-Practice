@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { buildSystemPrompt } from "@/lib/agent/system-prompt";
 import { AGENT_PROFILES, SESSION_OPENERS } from "@/lib/agent/profiles";
 import { createClient } from "@/lib/db/server";
@@ -33,6 +34,22 @@ export default async function SessionPage() {
           do the work. Run your five commands. Come back when the session is done.
         </p>
       </header>
+
+      <section className="flex flex-col items-start gap-2 rounded-lg border-2 border-foreground bg-card p-5">
+        <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
+          Start a project
+        </h2>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Bring a brief. {profile.name} will shape it into 3-5 operations sized
+          for five-command sessions.
+        </p>
+        <Link
+          href="/project/new"
+          className="mt-2 inline-flex h-10 items-center justify-center rounded-md bg-foreground px-5 text-sm font-medium text-background transition-colors hover:bg-foreground/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+        >
+          Start a Project →
+        </Link>
+      </section>
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">

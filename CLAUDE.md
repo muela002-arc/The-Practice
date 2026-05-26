@@ -52,8 +52,11 @@ Status: COMPLETE — scaffold verified, dev server running, Supabase clients con
 **Milestone 2: The Agent System Prompt (Week 2)**
 Status: COMPLETE (2026-05-26) — system prompts voice-verified against Claude (11-12/12 rubric per agent), auth chain working (dev-login bypass + magic-link callback for token_hash + PKCE), agent selection and session routes live, copy-to-clipboard verified end-to-end with Atlas paste-test. Supabase `agents` table migration applied with one-active-agent partial unique index. Vercel deploy still deferred.
 
-**Milestone 3: The Project Flow (Week 3)** ← NOW ACTIVE
-Goal: user describes a project, agent shapes it via Claude API into 3-5 operations, project board exists. First real LLM call in the codebase — `lib/llm/` gets created here.
+**Milestone 3: The Project Flow (Week 3)**
+Status: COMPLETE (2026-05-27) — full flow live: brief → Sonnet shaping (`claude-sonnet-4-6`) → ACID persist via `create_project_with_operations` RPC → project board with active-op styling. Voice-quality gate passed (15 shapings clean against the six-point rubric). `lib/llm/` created with the `claudeCall` wrapper + `project-shaper` (forced tool_use, Zod-validated, retries once on schema failure with raw-output logging). Five canonical test briefs documented at `.claude/skills/testing-the-loop.md`. Loading state in agent voice via `useFormStatus()` on a client island. Schema: `projects(id, user_id, agent_id, title, goal, description)` + `operations(id, project_id, ordinal, title, description)`, both RLS-locked, immutable in V1.
+
+**Milestone 4: The Session and Replay Loop (Week 4)** ← NOW ACTIVE
+Goal: full loop works end-to-end — user submits work for an operation, agent generates a replay in voice via Haiku, scars and wisdom are derived from the session and added to the agent's prompt.
 
 ## What We Are NOT Building In V1
 
