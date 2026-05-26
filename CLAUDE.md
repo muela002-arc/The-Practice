@@ -49,8 +49,11 @@ See `/docs/agents.md` for full voice specifications and example dialogue.
 **Milestone 1: The Walking Skeleton (Week 1)**
 Status: COMPLETE — scaffold verified, dev server running, Supabase clients connected. Vercel deploy deferred to after M2.
 
-**Milestone 2: The Agent System Prompt (Week 2)** ← NOW ACTIVE
-Goal: generate a system prompt for each of the three agents that the user can copy into Claude/ChatGPT/etc.
+**Milestone 2: The Agent System Prompt (Week 2)**
+Status: COMPLETE (2026-05-26) — system prompts voice-verified against Claude (11-12/12 rubric per agent), auth chain working (dev-login bypass + magic-link callback for token_hash + PKCE), agent selection and session routes live, copy-to-clipboard verified end-to-end with Atlas paste-test. Supabase `agents` table migration applied with one-active-agent partial unique index. Vercel deploy still deferred.
+
+**Milestone 3: The Project Flow (Week 3)** ← NOW ACTIVE
+Goal: user describes a project, agent shapes it via Claude API into 3-5 operations, project board exists. First real LLM call in the codebase — `lib/llm/` gets created here.
 
 ## What We Are NOT Building In V1
 
