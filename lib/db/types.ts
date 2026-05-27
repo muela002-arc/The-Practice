@@ -10,6 +10,8 @@ export type Database = {
           agent_type: AgentType;
           created_at: string;
           died_at: string | null;
+          xp: number;
+          level: number;
         };
         Insert: {
           id?: string;
@@ -17,8 +19,15 @@ export type Database = {
           agent_type: AgentType;
           created_at?: string;
           died_at?: string | null;
+          xp?: number;
+          level?: number;
         };
+        // M4 relaxes Update to allow the session-submission RPC to mutate
+        // xp + level. Other columns stay outside the typed Update path even
+        // though the RLS policy is broader — application discipline.
         Update: {
+          xp?: number;
+          level?: number;
           died_at?: string | null;
         };
         Relationships: [];
@@ -63,7 +72,42 @@ export type Database = {
           description: string;
           created_at?: string;
         };
-        // Immutable in M3. M4 adds completion → relax then.
+        // M4 keeps operations immutable. Completion is derived from sessions
+        // (existence of a session row with operation_id = this op's id).
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      sessions: {
+        Row: {
+          id: string;
+          operation_id: string;
+          transcript: string;
+          output: string;
+          reflection: string;
+          replay_narrative: string;
+          scar_text: string | null;
+          scar_source_excerpt: string | null;
+          wisdom_text: string | null;
+          wisdom_source_excerpt: string | null;
+          xp_delta: number;
+          submitted_at: string;
+        };
+        Insert: {
+          id?: string;
+          operation_id: string;
+          transcript: string;
+          output: string;
+          reflection: string;
+          replay_narrative: string;
+          scar_text?: string | null;
+          scar_source_excerpt?: string | null;
+          wisdom_text?: string | null;
+          wisdom_source_excerpt?: string | null;
+          xp_delta?: number;
+          submitted_at?: string;
+        };
+        // Sessions are immutable once submitted. V2 may relax for replay
+        // regeneration if voice drift surfaces.
         Update: Record<string, never>;
         Relationships: [];
       };
@@ -80,6 +124,41 @@ export type Database = {
           p_operations: { title: string; description: string }[];
         };
         Returns: string;
+      };
+      create_session_with_completion: {
+        Args: {
+          p_operation_id: string;
+          p_transcript: string;
+          p_output: string;
+          p_reflection: string;
+          p_replay_narrative: string;
+          p_scar_text: string | null;
+          p_scar_source_excerpt: string | null;
+          p_wisdom_text: string | null;
+          p_wisdom_source_excerpt: string | null;
+          p_xp_delta: number;
+        };
+        Returns: {
+          session: {
+            id: string;
+            operation_id: string;
+            transcript: string;
+            output: string;
+            reflection: string;
+            replay_narrative: string;
+            scar_text: string | null;
+            scar_source_excerpt: string | null;
+            wisdom_text: string | null;
+            wisdom_source_excerpt: string | null;
+            xp_delta: number;
+            submitted_at: string;
+          };
+          agent: {
+            xp: number;
+            level: number;
+            leveled_up: boolean;
+          };
+        };
       };
     };
     Enums: Record<string, never>;

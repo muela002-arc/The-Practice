@@ -5,6 +5,8 @@ export type ActiveAgent = {
   id: string;
   agentType: AgentType;
   createdAt: string;
+  xp: number;
+  level: number;
 };
 
 export async function getActiveAgentForUser(
@@ -13,7 +15,7 @@ export async function getActiveAgentForUser(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("agents")
-    .select("id, agent_type, created_at")
+    .select("id, agent_type, created_at, xp, level")
     .eq("user_id", userId)
     .is("died_at", null)
     .maybeSingle();
@@ -24,6 +26,8 @@ export async function getActiveAgentForUser(
     id: data.id,
     agentType: data.agent_type,
     createdAt: data.created_at,
+    xp: data.xp,
+    level: data.level,
   };
 }
 
@@ -39,7 +43,7 @@ export async function createAgentForUser(
   const { data, error } = await supabase
     .from("agents")
     .insert({ user_id: userId, agent_type: agentType })
-    .select("id, agent_type, created_at")
+    .select("id, agent_type, created_at, xp, level")
     .single();
 
   if (error) {
@@ -60,6 +64,8 @@ export async function createAgentForUser(
       id: data.id,
       agentType: data.agent_type,
       createdAt: data.created_at,
+      xp: data.xp,
+      level: data.level,
     },
   };
 }

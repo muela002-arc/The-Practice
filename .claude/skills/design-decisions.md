@@ -31,3 +31,21 @@ The `create_project_with_operations` RPC runs as `security invoker` (the default
 ## 2026-05-27: Loading state for slow server actions goes on a client island, not the page
 
 `/project/new` is a server component that renders a `<StartProjectForm>` client island. The form's `<form action={startProject}>` triggers a server action that runs `shapeProject` (10-15s Sonnet call) before redirecting. The "Working." / "Let me think about this." / "Checking the shape of this." loading copy lives on a `useFormStatus()`-driven submit button inside the client island — `useFormStatus` only sees the parent form's pending state when used from a child component within that form. Pattern for all slow server-action calls: keep the page server-rendered, isolate the form (or just the submit button) as a client component, read `pending` from `useFormStatus`. Do NOT push the whole page client-side just to get a loading indicator.
+
+## 2026-05-27: Agent level thresholds (V1)
+
+XP-to-level mapping for V1:
+
+- Level 1: 0-99 XP
+- Level 2: 100-249 XP
+- Level 3: 250-499 XP
+- Level 4: 500-899 XP
+- Level 5: 900+ XP
+
+The `level` column on `agents` is stored AND recomputed by the session-submission RPC each time `xp` changes (`create_session_with_completion` in `0007_create_session_rpc.sql`). The thresholds live in PL/pgSQL inside that RPC — duplicating them in TypeScript would risk drift. Application code reads `level` from the DB rather than recomputing client-side. If we ever need preview-style level computation in the UI (e.g., "you're 50 XP from level 4"), extract the thresholds to a shared module and reference from both SQL and TS — until then, DB is the source of truth.
+
+`xp_delta` per session is capped at 150 in the replay-generator's Zod schema, which is enough to skip from L1 to L2 in one session but never more than one tier — keeps the curve hand-tuneable.
+
+## 2026-05-27: "use server" files may only export async functions
+
+Next.js (15+) enforces a strict rule on files marked `"use server"`: every export must be an async function used as a server action. Type exports, constants, schemas, and any other non-function value cause a runtime error: `A "use server" file can only export async functions, found object.` This bit us during M4 when `app/(app)/operation/[id]/submit/actions.ts` exported both `submitOperation` (the action), `SubmitFormState` (a type), and `INITIAL_SUBMIT_STATE` (an object const). The error fires at render time when the page that imports the action loads, not at build/typecheck — so typecheck-clean code can still break in the browser. Pattern: colocate non-function module-level values for an action in a sibling file (we used `schema.ts`). The action imports the type via `import type { ... }` (which TypeScript erases at compile so it doesn't leak into the action bundle). The client form imports the const directly from the schema file. This applies to ALL server-action files going forward.

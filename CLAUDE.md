@@ -55,8 +55,11 @@ Status: COMPLETE (2026-05-26) — system prompts voice-verified against Claude (
 **Milestone 3: The Project Flow (Week 3)**
 Status: COMPLETE (2026-05-27) — full flow live: brief → Sonnet shaping (`claude-sonnet-4-6`) → ACID persist via `create_project_with_operations` RPC → project board with active-op styling. Voice-quality gate passed (15 shapings clean against the six-point rubric). `lib/llm/` created with the `claudeCall` wrapper + `project-shaper` (forced tool_use, Zod-validated, retries once on schema failure with raw-output logging). Five canonical test briefs documented at `.claude/skills/testing-the-loop.md`. Loading state in agent voice via `useFormStatus()` on a client island. Schema: `projects(id, user_id, agent_id, title, goal, description)` + `operations(id, project_id, ordinal, title, description)`, both RLS-locked, immutable in V1.
 
-**Milestone 4: The Session and Replay Loop (Week 4)** ← NOW ACTIVE
-Goal: full loop works end-to-end — user submits work for an operation, agent generates a replay in voice via Haiku, scars and wisdom are derived from the session and added to the agent's prompt.
+**Milestone 4: The Session and Replay Loop (Week 4)**
+Status: COMPLETE (2026-05-27) — full loop verified end-to-end: Begin Session → operation-contextualized system prompt with scars/wisdom slots populated from `getAgentHistory()` → Submit my work form (transcript + output + reflection) → `generateReplay()` Haiku call → `submitSession()` via `create_session_with_completion` RPC → replay page with narrative, scar (red border), wisdom (green border), XP/level stats, leveled-up celebration. Voice re-verification passed against three agents with sample scars/wisdom inserted between `# How you speak` and `# Session rules`. Sessions immutable, completion derived from session existence (no `completed_at` on operations). Five migrations applied (0006 sessions + agent xp/level, 0007 RPC). Five new routes: `/operation/[id]`, `/operation/[id]/submit`, `/operation/[id]/replay`, plus updated project board with session-aware active-op derivation.
+
+**Milestone 5: Polish, Daily Drills, Soft Launch (Week 5-6)** ← NOW ACTIVE
+Goal: product is good enough to send to 50 real users — 30 daily drills authored, drill UI works, shareable agent card page exists, invite system functional, full security audit, soft launch.
 
 ## What We Are NOT Building In V1
 

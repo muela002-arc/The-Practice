@@ -60,3 +60,11 @@ export const SHAPING_LOADING_MESSAGES: Record<AgentType, string> = {
   vela: "Let me think about this.",
   iris: "Checking the shape of this.",
 };
+
+// Loading copy shown on the submit button while the Haiku replay generation
+// call runs (5-10s). Same voice-flavored brevity as the shaping messages.
+export const REPLAY_LOADING_MESSAGES: Record<AgentType, string> = {
+  atlas: "Reading.",
+  vela: "Let me think about what happened.",
+  iris: "Checking what you produced.",
+};

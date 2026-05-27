@@ -120,6 +120,35 @@ export async function getProjectsForUser(
   }));
 }
 
+// Fetch a single operation by id. RLS scopes to the caller's operations via
+// operation → project → user_id (see 0002 policies). Returns null if the
+// operation doesn't exist or doesn't belong to the caller.
+export async function getOperationById(operationId: string): Promise<{
+  id: string;
+  projectId: string;
+  ordinal: number;
+  title: string;
+  description: string;
+  createdAt: string;
+} | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("operations")
+    .select("id, project_id, ordinal, title, description, created_at")
+    .eq("id", operationId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    id: data.id,
+    projectId: data.project_id,
+    ordinal: data.ordinal,
+    title: data.title,
+    description: data.description,
+    createdAt: data.created_at,
+  };
+}
+
 // Single project fetch by id, RLS-scoped to the caller. Returns null when the
 // project doesn't exist OR doesn't belong to the user (RLS doesn't distinguish).
 export async function getProjectById(

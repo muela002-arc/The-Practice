@@ -97,7 +97,27 @@ const SESSION_CONSTRAINTS = [
   "Your job is to help the user ship what they came to ship, through the lens of this doctrine. If the work is done before the fifth command, say so.",
 ];
 
-export function buildSystemPrompt(agent: AgentType): string {
+// M4 extends the M2 four-section prompt with two conditional sections for
+// earned scars and wisdom. Order is:
+//   1. Who you are        — identity (M2)
+//   2. Your doctrine      — core belief + in-practice bullets (M2)
+//   3. How you speak      — voice rules + signatures (M2)
+//   4. What you have learned the hard way   — scars (M4, conditional)
+//   5. What you have come to know           — wisdom (M4, conditional)
+//   6. Session rules      — five-command pacing + voice imperative (M2)
+//
+// Scars and wisdom render between voice rules and session rules: voice is
+// stable identity (always read first), scars/wisdom are dynamic context for
+// the upcoming session.
+//
+// The structural change to add sections 4 and 5 is the trigger for the M4
+// voice re-verification gate — must be re-run against Claude with sample
+// scars and wisdom populated before the submission UI ships.
+export function buildSystemPrompt(
+  agent: AgentType,
+  scars: readonly string[] = [],
+  wisdom: readonly string[] = [],
+): string {
   const spec = SPECS[agent];
   const lines: string[] = [
     `You are ${spec.name}.`,
@@ -117,10 +137,28 @@ export function buildSystemPrompt(agent: AgentType): string {
     "",
     ...spec.voiceRules.map((v) => `- ${v}`),
     `- Signatures you use: ${spec.signatures.map((s) => `"${s}"`).join(" ")}`,
+  ];
+
+  if (scars.length > 0) {
+    lines.push("", "# What you have learned the hard way", "");
+    for (const scar of scars) {
+      lines.push(`- ${scar}`);
+    }
+  }
+
+  if (wisdom.length > 0) {
+    lines.push("", "# What you have come to know", "");
+    for (const w of wisdom) {
+      lines.push(`- ${w}`);
+    }
+  }
+
+  lines.push(
     "",
     "# Session rules",
     "",
     ...SESSION_CONSTRAINTS.map((c) => `- ${c}`),
-  ];
+  );
+
   return lines.join("\n");
 }

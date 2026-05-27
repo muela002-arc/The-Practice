@@ -3,7 +3,10 @@ import Link from "next/link";
 import { createClient } from "@/lib/db/server";
 import { getProjectById, type ProjectOperation } from "@/lib/db/projects";
 import { getActiveAgentForUser } from "@/lib/db/agents";
+import { getOperationIdsWithSessions } from "@/lib/db/sessions";
 import { AGENT_PROFILES } from "@/lib/agent/profiles";
+
+type OpStatus = "completed" | "active" | "pending";
 
 export default async function ProjectBoardPage({
   params,
@@ -21,13 +24,28 @@ export default async function ProjectBoardPage({
   const project = await getProjectById(user.id, id);
   if (!project) notFound();
 
-  // The agent that shaped this project may differ from the user's currently
-  // active one (in V1 it won't, but the data model permits it post-death).
-  // For M3 we just show the user's active agent's name as context if available.
+  // Active operation is the lowest-ordinal op without a session. M4 derives
+  // completion from sessions rather than storing it on operations.
+  const operationIds = project.operations.map((op) => op.id);
+  const completedIds = await getOperationIdsWithSessions(operationIds);
+  const activeIndex = project.operations.findIndex(
+    (op) => !completedIds.has(op.id),
+  );
+
+  const opsWithStatus = project.operations.map(
+    (op, idx): { op: ProjectOperation; status: OpStatus } => {
+      if (completedIds.has(op.id)) return { op, status: "completed" };
+      if (idx === activeIndex) return { op, status: "active" };
+      return { op, status: "pending" };
+    },
+  );
+
   const activeAgent = await getActiveAgentForUser(user.id);
   const agentProfile = activeAgent
     ? AGENT_PROFILES[activeAgent.agentType]
     : null;
+
+  const allComplete = activeIndex === -1;
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-10 px-6 py-16">
@@ -48,6 +66,11 @@ export default async function ProjectBoardPage({
         <p className="text-lg leading-relaxed text-muted-foreground">
           {project.goal}
         </p>
+        {allComplete && (
+          <p className="pt-2 text-sm font-medium text-foreground">
+            All operations completed.
+          </p>
+        )}
       </header>
 
       <section className="space-y-3">
@@ -55,9 +78,9 @@ export default async function ProjectBoardPage({
           Operations
         </h2>
         <ol className="space-y-3">
-          {project.operations.map((op, idx) => (
+          {opsWithStatus.map(({ op, status }) => (
             <li key={op.id}>
-              <OperationCard operation={op} active={idx === 0} />
+              <OperationCard operation={op} status={status} />
             </li>
           ))}
         </ol>
@@ -68,15 +91,18 @@ export default async function ProjectBoardPage({
 
 function OperationCard({
   operation,
-  active,
+  status,
 }: {
   operation: ProjectOperation;
-  active: boolean;
+  status: OpStatus;
 }) {
+  const isActive = status === "active";
+  const isCompleted = status === "completed";
+
   return (
     <article
       className={
-        active
+        isActive
           ? "rounded-lg border-2 border-foreground bg-card p-5"
           : "rounded-lg border bg-card/40 p-5"
       }
@@ -85,7 +111,7 @@ function OperationCard({
         <div className="flex items-baseline gap-3">
           <span
             className={
-              active
+              isActive
                 ? "text-xs font-medium uppercase tracking-widest text-foreground"
                 : "text-xs font-medium uppercase tracking-widest text-muted-foreground"
             }
@@ -94,7 +120,7 @@ function OperationCard({
           </span>
           <h3
             className={
-              active
+              isActive
                 ? "text-xl font-semibold tracking-tight"
                 : "text-lg font-medium tracking-tight text-muted-foreground"
             }
@@ -102,35 +128,34 @@ function OperationCard({
             {operation.title}
           </h3>
         </div>
-        {active && (
+        {isActive && (
           <span className="text-xs uppercase tracking-widest text-foreground">
             Active
+          </span>
+        )}
+        {isCompleted && (
+          <span className="text-xs uppercase tracking-widest text-muted-foreground">
+            Completed
           </span>
         )}
       </header>
       <p
         className={
-          active
+          isActive
             ? "mt-3 text-sm leading-relaxed text-foreground"
             : "mt-3 text-sm leading-relaxed text-muted-foreground"
         }
       >
         {operation.description}
       </p>
-      {active && (
+      {isActive && (
         <div className="mt-5 flex items-center gap-3">
-          <button
-            type="button"
-            disabled
-            aria-disabled="true"
-            title="Coming in the next milestone"
-            className="inline-flex h-10 cursor-not-allowed items-center justify-center rounded-md border bg-muted px-4 text-sm font-medium text-muted-foreground"
+          <Link
+            href={`/operation/${operation.id}`}
+            className="inline-flex h-10 items-center justify-center rounded-md bg-foreground px-4 text-sm font-medium text-background transition-colors hover:bg-foreground/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
           >
-            Begin Session
-          </button>
-          <span className="text-xs text-muted-foreground">
-            Coming in the next milestone
-          </span>
+            Begin Session →
+          </Link>
         </div>
       )}
     </article>
