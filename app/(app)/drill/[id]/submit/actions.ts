@@ -3,22 +3,26 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/db/server";
 import { getActiveAgentForUser } from "@/lib/db/agents";
-import { getOperationById, getProjectById } from "@/lib/db/projects";
-import { getAgentHistory, submitSession } from "@/lib/db/sessions";
+import { getDrillById } from "@/lib/db/drills";
+import {
+  getAgentHistory,
+  getSessionForDrill,
+  submitSession,
+} from "@/lib/db/sessions";
 import { generateReplay } from "@/lib/llm/replay-generator";
-import type { SubmitFormState } from "./schema";
+import type { SubmitDrillFormState } from "./schema";
 
-export async function submitOperation(
-  _prevState: SubmitFormState,
+export async function submitDrill(
+  _prevState: SubmitDrillFormState,
   formData: FormData,
-): Promise<SubmitFormState> {
-  const operationId = formData.get("operationId");
+): Promise<SubmitDrillFormState> {
+  const drillId = formData.get("drillId");
   const transcriptRaw = formData.get("transcript");
   const outputRaw = formData.get("output");
   const reflectionRaw = formData.get("reflection");
 
   if (
-    typeof operationId !== "string" ||
+    typeof drillId !== "string" ||
     typeof transcriptRaw !== "string" ||
     typeof outputRaw !== "string" ||
     typeof reflectionRaw !== "string"
@@ -54,36 +58,37 @@ export async function submitOperation(
   } = await supabase.auth.getUser();
   if (!user) redirect("/sign-up");
 
-  const operation = await getOperationById(operationId);
-  if (!operation) return { error: "Operation not found." };
+  const drill = await getDrillById(drillId);
+  if (!drill) return { error: "Drill not found." };
 
-  const project = await getProjectById(user.id, operation.projectId);
-  if (!project) return { error: "Project not found." };
+  // Defense in depth: the partial unique index in 0008 catches re-submission,
+  // and the RPC raises a clear error before that. This check spares the
+  // round-trip when we already know.
+  const existing = await getSessionForDrill(user.id, drillId);
+  if (existing) redirect(`/drill/${drill.id}/replay`);
 
   const agent = await getActiveAgentForUser(user.id);
   if (!agent) redirect("/select-agent");
 
-  // Pull the agent's accumulated scars + wisdom so the LLM doesn't re-issue them.
   const history = await getAgentHistory(agent.id);
 
-  // Haiku call. ~5-10s. useFormStatus on the client swaps the submit label
-  // to the agent's REPLAY_LOADING_MESSAGES copy while we wait. Errors here
-  // (Zod retries exhausted, API down) throw — the nearest error boundary
-  // catches them. Validation errors above return as state for inline display.
+  // Haiku call. ~5-10s. useFormStatus on the client swaps the button to the
+  // agent's REPLAY_LOADING_MESSAGES copy.
   const replay = await generateReplay({
     agentType: agent.agentType,
     existingScars: history.scars,
     existingWisdom: history.wisdom,
-    sessionTitle: operation.title,
-    sessionDescription: operation.description,
-    sessionGoal: project.goal,
+    sessionTitle: drill.title,
+    sessionDescription: drill.prompt,
+    sessionGoal: null, // drills are standalone — no broader project goal
     transcript,
     output,
     reflection,
   });
 
   const result = await submitSession({
-    operationId: operation.id,
+    drillId: drill.id,
+    operationId: null,
     transcript,
     output,
     reflection,
@@ -93,9 +98,7 @@ export async function submitOperation(
     xpDelta: replay.xpDelta,
   });
 
-  // Pass the level-up signal through the URL. It's an ephemeral celebration —
-  // refreshing the replay page later won't re-show it, which is correct.
   redirect(
-    `/operation/${operation.id}/replay?leveled_up=${result.agent.leveledUp ? "true" : "false"}`,
+    `/drill/${drill.id}/replay?leveled_up=${result.agent.leveledUp ? "true" : "false"}`,
   );
 }

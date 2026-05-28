@@ -58,8 +58,33 @@ Status: COMPLETE (2026-05-27) — full flow live: brief → Sonnet shaping (`cla
 **Milestone 4: The Session and Replay Loop (Week 4)**
 Status: COMPLETE (2026-05-27) — full loop verified end-to-end: Begin Session → operation-contextualized system prompt with scars/wisdom slots populated from `getAgentHistory()` → Submit my work form (transcript + output + reflection) → `generateReplay()` Haiku call → `submitSession()` via `create_session_with_completion` RPC → replay page with narrative, scar (red border), wisdom (green border), XP/level stats, leveled-up celebration. Voice re-verification passed against three agents with sample scars/wisdom inserted between `# How you speak` and `# Session rules`. Sessions immutable, completion derived from session existence (no `completed_at` on operations). Five migrations applied (0006 sessions + agent xp/level, 0007 RPC). Five new routes: `/operation/[id]`, `/operation/[id]/submit`, `/operation/[id]/replay`, plus updated project board with session-aware active-op derivation.
 
-**Milestone 5: Polish, Daily Drills, Soft Launch (Week 5-6)** ← NOW ACTIVE
-Goal: product is good enough to send to 50 real users — 30 daily drills authored, drill UI works, shareable agent card page exists, invite system functional, full security audit, soft launch.
+**Milestone 5: Polish, Daily Drills, Soft Launch (Week 5-6)**
+Status: COMPLETE (2026-05-27) — 30 canonical drills authored across Build/Refine/Decide and seeded via `supabase/seeds/drills.sql`; unified sessions schema (operation_id and drill_id both nullable, exactly-one check, denormalized user_id, partial unique on `(user_id, drill_id)` for anti-grinding); drill loop verified end-to-end (`/drills` → `/drill/[id]` → `/drill/[id]/submit` → `/drill/[id]/replay`) with the source-agnostic `generateReplay` refactor; public agent card at `/agent/[id]` with lazy Haiku-generated quote cached on `agents.card_quote`, Open Graph + Twitter card meta; invite system functional (`/sign-up` form with email + 10-char invite code, `/auth/callback` extended to atomic-claim the code and generate 3 new on first login, RLS-scoped invite management on `/session`). Six migrations applied this milestone (0008 drills+unified sessions, 0009 RPC update for drills, 0010 invite codes, 0011 card quote). Three sanctioned service-role usages now: `/auth/dev-login`, `/agent/[id]`, `/auth/callback`. Stale page-level "Submit my work" button removed from `/session`.
+
+## Build Complete (2026-05-27)
+
+All five milestones shipped. Soft-launch ready.
+
+**What V1 ships:**
+
+- Three starter agents (Atlas/Vela/Iris) with mechanically distinct doctrines, voice-verified across M2 (base prompt) and M4 (with scar/wisdom slots) against Claude.
+- Magic-link sign-up gated by single-use invite codes. Each user gets 3 codes on first login. 10 platform-seeded launch codes plant the network.
+- Project flow: free-text brief → Sonnet-shaped 3-5 operations → operation-scoped sessions → submission → Haiku replay narrative + optional scar + optional wisdom + XP/level.
+- Drill flow: 30 standalone five-command scenarios across Build/Refine/Decide. Same submission/replay/scar/wisdom mechanics. Anti-grinding (one attempt per drill per user).
+- Public shareable agent card at `/agent/[id]` with cached voice-shaped quote, level, XP, recent scars and wisdom.
+- Unified sessions table covers both operation and drill sessions; one source of truth for agent history.
+
+**Strategic principles upheld throughout:**
+
+1. **BYO-AI forever.** Three platform-hosted LLM calls only: project shaping (Sonnet), replay generation (Haiku), card quote (Haiku). Everything else happens in the user's AI tool of choice.
+2. **The agent IS the configuration.** Scars and wisdom modify `buildSystemPrompt` directly — they are real prompt deltas, not cosmetic stats.
+3. **Doctrines are identity, not features.** Voice and shaping behavior visibly differ across Atlas/Vela/Iris on identical inputs (verified by qa-loop-tester equivalents in M3 and M4).
+4. **Death is a Day 1 design commitment.** `agents.died_at` column reserved across all RLS, FK, and RPC paths. No mechanic implemented in V1.
+5. **Minecraft, not Duolingo.** Projects are user-chosen, drills are opt-in. No daily-drill notification, no streak-shaming, no assigned content.
+
+**What's NOT in V1** (see "What We Are NOT Building In V1" below for the full list, all honored).
+
+**Next steps:** Vercel deploy, soft launch to 50 invited users, observe whether the doctrine-distinct retention thesis holds.
 
 ## What We Are NOT Building In V1
 

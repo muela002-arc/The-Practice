@@ -35,10 +35,15 @@ export type ReplayInput = {
   // re-issue them. Empty for the agent's first session.
   existingScars: string[];
   existingWisdom: string[];
-  // What the user worked
-  operationTitle: string;
-  operationDescription: string;
-  projectGoal: string;
+  // What the user worked. Source-agnostic — operations and drills both
+  // populate the same fields:
+  //   operations: sessionTitle = operation.title, sessionDescription =
+  //               operation.description, sessionGoal = project.goal
+  //   drills:     sessionTitle = drill.title, sessionDescription =
+  //               drill.prompt, sessionGoal = null (drills are standalone)
+  sessionTitle: string;
+  sessionDescription: string;
+  sessionGoal: string | null;
   // The submission
   transcript: string;
   output: string;
@@ -56,7 +61,7 @@ export type ReplayResult = {
 
 const REPLAY_RULES = `# What you are doing right now
 
-A session has just ended. The user worked one operation of a project with you — in their AI tool of choice (Claude, ChatGPT, Cursor, Lovable, etc.) — and submitted three things: the conversation transcript, what they shipped or produced, and a written reflection. The next message contains all of that, plus the operation and project context, plus the scars and wisdom you have already accumulated.
+A session has just ended. The user worked a session with you — in their AI tool of choice (Claude, ChatGPT, Cursor, Lovable, etc.) — and submitted three things: the conversation transcript, what they shipped or produced, and a written reflection. The next message contains all of that, plus the session context, plus the scars and wisdom you have already accumulated.
 
 Produce four things by calling the \`replay_session\` tool. That is the only valid way to respond.
 
@@ -160,24 +165,31 @@ function buildUserMessage(input: ReplayInput): string {
     ? input.existingWisdom.map((w, i) => `${i + 1}. ${w}`).join("\n")
     : "(none yet)";
 
-  return `Operation: ${input.operationTitle}
-Operation description: ${input.operationDescription}
-Project goal: ${input.projectGoal}
-
---- Transcript ---
-${input.transcript}
-
---- Output ---
-${input.output}
-
---- Reflection ---
-${input.reflection}
-
---- Your existing scars (do not repeat) ---
-${scarsBlock}
-
---- Your existing wisdom (do not repeat) ---
-${wisdomBlock}`;
+  const lines: string[] = [
+    `Session: ${input.sessionTitle}`,
+    `Session description: ${input.sessionDescription}`,
+  ];
+  if (input.sessionGoal) {
+    lines.push(`Broader goal: ${input.sessionGoal}`);
+  }
+  lines.push(
+    "",
+    "--- Transcript ---",
+    input.transcript,
+    "",
+    "--- Output ---",
+    input.output,
+    "",
+    "--- Reflection ---",
+    input.reflection,
+    "",
+    "--- Your existing scars (do not repeat) ---",
+    scarsBlock,
+    "",
+    "--- Your existing wisdom (do not repeat) ---",
+    wisdomBlock,
+  );
+  return lines.join("\n");
 }
 
 function normalizeResult(

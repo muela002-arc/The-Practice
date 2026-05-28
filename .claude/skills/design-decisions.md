@@ -49,3 +49,15 @@ The `level` column on `agents` is stored AND recomputed by the session-submissio
 ## 2026-05-27: "use server" files may only export async functions
 
 Next.js (15+) enforces a strict rule on files marked `"use server"`: every export must be an async function used as a server action. Type exports, constants, schemas, and any other non-function value cause a runtime error: `A "use server" file can only export async functions, found object.` This bit us during M4 when `app/(app)/operation/[id]/submit/actions.ts` exported both `submitOperation` (the action), `SubmitFormState` (a type), and `INITIAL_SUBMIT_STATE` (an object const). The error fires at render time when the page that imports the action loads, not at build/typecheck — so typecheck-clean code can still break in the browser. Pattern: colocate non-function module-level values for an action in a sibling file (we used `schema.ts`). The action imports the type via `import type { ... }` (which TypeScript erases at compile so it doesn't leak into the action bundle). The client form imports the const directly from the schema file. This applies to ALL server-action files going forward.
+
+## 2026-05-27: Service-role admin client has three sanctioned usages
+
+Through M2-M4 the service role lived only in `/auth/dev-login` (gitignored). M5 added two more legitimate paths and the codebase now has a shared `lib/db/admin.ts` exporting `createAdminClient()`. The three sanctioned usages, with their reasons:
+
+1. **`/auth/dev-login/route.ts`** (gitignored, NODE_ENV-gated) — local-dev sign-in bypass. Service role mints magic-link tokens via `admin.generateLink` so we can verifyOtp without email delivery.
+2. **`/agent/[id]/page.tsx`** — public agent card route. No auth required for visitors. Service role reads the agent row + sessions (projecting only public-safe fields: agent_type, level, xp, top scars/wisdom text, sessions count, cached card_quote). Also writes `agents.card_quote` on first visit after the Haiku generation. The projection IS the security boundary here — RLS is bypassed but only intentionally-public fields are exposed to the rendered HTML.
+3. **`/auth/callback/route.ts`** — first-login invite bookkeeping. Service role atomically claims the user's invite code (the new user does not yet own that row, so the user-scoped client cannot mutate it) and generates the new user's three fresh codes. Wrapped in try/catch so invite failures never block sign-in.
+
+Add a fourth usage only with a clear reason that fits the same shape: server-side only, narrow projection, never on a path that takes user input as a query filter that could leak other users' data. Never service-role inside a client component or a server action that processes untrusted user-provided IDs without validation.
+
+The shared helper at `lib/db/admin.ts` documents all three usages in a header comment that should be kept up-to-date when a fourth lands.

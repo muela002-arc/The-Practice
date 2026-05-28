@@ -36,42 +36,75 @@ From CLAUDE.md Coding Conventions:
 3. **`.env.example` has only placeholder values**, never real secrets.
 4. **`ANTHROPIC_API_KEY`** (added in M3 with `lib/llm/`) is server-only — no `NEXT_PUBLIC_` prefix; never read from a client component or imported into one.
 
+### Service-role usage (M5 update)
+
+Service role appears in exactly three places. Confirm no additional usages have crept in:
+
+1. **`app/auth/dev-login/route.ts`** — gitignored, NODE_ENV-gated. Local-dev only.
+2. **`app/agent/[id]/page.tsx`** — public agent card. Reads agent + sessions, projects only public-safe fields, writes `agents.card_quote` once. The projection (SELECT list) IS the security boundary — bypassing RLS means it must not expose anything sensitive.
+3. **`app/auth/callback/route.ts`** — first-login invite bookkeeping (atomic code claim + new-user code generation). Wrapped in try/catch so failure does not block sign-in.
+
+All three import from `lib/db/admin.ts` via `createAdminClient()`. The helper's header comment lists the sanctioned usages — keep it current. A grep for `createAdminClient` should return exactly these three files (plus the helper itself). Anything else is a new attack surface to review.
+
+See `.claude/skills/design-decisions.md` entry "Service-role admin client has three sanctioned usages" for the full rationale.
+
 ### RLS
 
-1. **Every user-scoped table has RLS enabled.** As of M2: `agents` (see `supabase/migrations/0001_agents.sql`).
-2. **Policies cover the access pattern actually used.** Currently: `agents_select_own` and `agents_insert_own`. No update/delete by design (agents are permanent until the M4+ death mechanic).
-3. **Cross-user reads are blocked.** Manual verification: sign in as user A, attempt to read user B's agent. Should return zero rows, not an error.
-4. **New tables added in M3 (projects, operations) and M4 (scars, wisdom)** must have RLS enabled and tested before the milestone closes.
+1. **Every user-scoped table has RLS enabled.** As of M5: `agents`, `projects`, `operations`, `sessions`, `invite_codes`. Drills are global content (`drills_select_authenticated` allows any signed-in user to SELECT).
+2. **Policies cover the access pattern actually used.**
+   - `agents` — select-own, insert-own, update-own (M4 relaxed for xp/level/died_at; M5 also for card_quote).
+   - `projects` — select-own, insert-own. No update/delete (immutable).
+   - `operations` — select/insert via project ownership EXISTS check. No update/delete.
+   - `sessions` — **M5 rewrote RLS to `user_id = auth.uid()` directly** (was EXISTS-through-projects). Simpler and covers both operation sessions and drill sessions in one policy.
+   - `drills` — select-only, all authenticated users (global content).
+   - `invite_codes` — select where `created_by = auth.uid()`. No INSERT/UPDATE/DELETE policies — all writes go through service role at `/auth/callback`.
+3. **Cross-user reads are blocked.** Manual verification: sign in as user A, attempt to read user B's agent, project, operations, sessions. Should return zero rows on each table, not an error.
+4. **Sessions UNIQUE constraints**: table-level `UNIQUE(operation_id)` for one session per operation; partial `UNIQUE(user_id, drill_id) WHERE drill_id IS NOT NULL` for one attempt per drill per user. The partial index is the anti-grinding default for drills; lifting it requires explicit redesign.
+
+### RPC surface
+
+The codebase has two RPCs as of M5, both `security invoker` with explicit `auth.uid()` guards:
+
+1. **`create_project_with_operations`** (0003, signature changed in 0005) — atomic project + operations insert. Validates agent ownership + active status.
+2. **`create_session_with_completion`** (0007, signature changed in 0009 to add `p_drill_id`) — atomic session insert + agent xp/level update. Validates ownership for operation sessions, drill validity + non-repeat for drill sessions, sequential completion for project sessions, paired nullability of scar/wisdom, xp_delta >= 0.
+
+Confirm any new RPCs follow the same pattern: `security invoker`, `auth.uid()` guard at top, narrow EXECUTE grant to `authenticated` only.
 
 ### Code locations
 
 1. **DB queries go through `lib/db/`.** No `.from("...")` calls in route handlers, server actions, or pages — only in `lib/db/*.ts` helpers.
 2. **LLM calls go through `lib/llm/`** (created in M3). No `anthropic.messages.create()` calls inline in route handlers.
 
-## What was clean at M2 close-out
+## What was clean at M5 close-out
 
 - `.env*` in `.gitignore`
 - `/app/auth/dev-login/` in `.gitignore`
 - `/tmp` in `.gitignore`
-- `agents` table RLS enabled with select-own and insert-own policies
-- Dev-login route gated by NODE_ENV check + service-role-key-not-placeholder check
-- All DB access through `lib/db/agents.ts`
-- Service role key never imported in client-component code
+- RLS enabled on every user-scoped table (`agents`, `projects`, `operations`, `sessions`, `invite_codes`)
+- Service role usage in exactly three sanctioned places, all going through `lib/db/admin.ts`
+- All DB access through `lib/db/*.ts` helpers; LLM calls through `lib/llm/`
+- `SUPABASE_SERVICE_ROLE_KEY` and `ANTHROPIC_API_KEY` server-only, no `NEXT_PUBLIC_` prefix
+- Sign-up gated by single-use invite codes; atomic claim at `/auth/callback`
+- RPC paths all `security invoker` with explicit `auth.uid()` guards
 
-## What is NOT yet documented (do not invent)
+## What is NOT yet hardened (open work for production)
 
-- Threat model for production (rate limiting, abuse, prompt injection on user input that becomes part of LLM calls)
-- `ANTHROPIC_API_KEY` handling once `lib/llm/` ships in M3
-- Submission content validation in M4 (user pastes potentially hostile content from third-party tools)
+- Rate limiting on `/sign-up` (anyone with a valid code can request unlimited magic links for any email)
+- Prompt-injection defenses on LLM-bound user input (transcripts, reflections, briefs flow into Sonnet/Haiku unsanitized)
+- Anthropic API key rotation cadence and storage hygiene (currently lives in `.env.local`; production needs platform secret store)
+- Cross-tenant CSRF / origin validation on server actions
 - Whether RLS alone is enough or some routes need additional server-side authorization checks beyond `getUser()`
+- Audit logging (currently we have console.error on invite-bookkeeping failures only — nothing structured)
 
 When you hit a new attack surface and there's no documented stance, stop and ask the user.
 
 ## Reference
 
-- CLAUDE.md — Coding Conventions and Strategic Principles
-- `.claude/skills/design-decisions.md` — M2 lessons (email template, `next` footgun, dev-login pattern)
+- CLAUDE.md — Coding Conventions, Strategic Principles, Build Complete section
+- `.claude/skills/design-decisions.md` — full decision log including the three sanctioned service-role usages
 - `.claude/skills/nextjs-conventions.md` — server vs client, where DB access is allowed
-- `supabase/migrations/0001_agents.sql` — current RLS policies
+- `lib/db/admin.ts` — service-role helper, header comment lists sanctioned usages
+- `supabase/migrations/0001_agents.sql` through `0011_agent_card_quote.sql` — current schema + RLS
 - `app/auth/dev-login/route.ts` — the dev-only bypass (gitignored)
-- `app/auth/callback/route.ts` — the magic-link handler
+- `app/auth/callback/route.ts` — the magic-link handler + first-login invite bookkeeping
+- `app/agent/[id]/page.tsx` — public card with service-role read + lazy quote write

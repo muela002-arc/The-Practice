@@ -7,8 +7,12 @@ export type ScarOrWisdom = {
   sourceExcerpt: string;
 };
 
+// M5: a submission is either operation-scoped (project work) or drill-scoped
+// (standalone drill). The RPC enforces exactly-one-non-null at runtime.
+// Both fields are optional in TS; callers pass whichever applies.
 export type SubmitSessionInput = {
-  operationId: string;
+  operationId?: string | null;
+  drillId?: string | null;
   transcript: string;
   output: string;
   reflection: string;
@@ -20,7 +24,9 @@ export type SubmitSessionInput = {
 
 export type SessionRow = {
   id: string;
-  operationId: string;
+  operationId: string | null;
+  drillId: string | null;
+  userId: string;
   transcript: string;
   output: string;
   reflection: string;
@@ -48,12 +54,9 @@ export type AgentHistory = {
 // ---------- Public ----------
 
 // Atomic session submission via the create_session_with_completion RPC.
-// Inserts the session row + updates the agent's xp + level in one transaction
-// (see supabase/migrations/0007_create_session_rpc.sql).
-//
-// The RPC handles all guards (ownership, sequential completion, pair
-// consistency, xp >= 0, unique-violation translation). This function maps
-// camelCase TS → snake_case RPC args and back.
+// The RPC handles all guards (auth, exactly-one source, ownership, sequential
+// completion for operations, drill validity, pair consistency, xp >= 0,
+// unique-violation translation).
 export async function submitSession(
   input: SubmitSessionInput,
 ): Promise<SubmittedSession> {
@@ -61,7 +64,8 @@ export async function submitSession(
   const { data, error } = await supabase.rpc(
     "create_session_with_completion",
     {
-      p_operation_id: input.operationId,
+      p_operation_id: input.operationId ?? null,
+      p_drill_id: input.drillId ?? null,
       p_transcript: input.transcript,
       p_output: input.output,
       p_reflection: input.reflection,
@@ -81,32 +85,7 @@ export async function submitSession(
   }
 
   return {
-    session: {
-      id: data.session.id,
-      operationId: data.session.operation_id,
-      transcript: data.session.transcript,
-      output: data.session.output,
-      reflection: data.session.reflection,
-      replayNarrative: data.session.replay_narrative,
-      scar:
-        data.session.scar_text !== null &&
-        data.session.scar_source_excerpt !== null
-          ? {
-              text: data.session.scar_text,
-              sourceExcerpt: data.session.scar_source_excerpt,
-            }
-          : null,
-      wisdom:
-        data.session.wisdom_text !== null &&
-        data.session.wisdom_source_excerpt !== null
-          ? {
-              text: data.session.wisdom_text,
-              sourceExcerpt: data.session.wisdom_source_excerpt,
-            }
-          : null,
-      xpDelta: data.session.xp_delta,
-      submittedAt: data.session.submitted_at,
-    },
+    session: rowFromRpcSession(data.session),
     agent: {
       xp: data.agent.xp,
       level: data.agent.level,
@@ -116,8 +95,9 @@ export async function submitSession(
 }
 
 // Returns the session for a given operation if it exists, else null.
-// RLS already restricts to the caller's operations regardless of userId
-// passed; the parameter exists for API symmetry with the other query helpers.
+// RLS already restricts to the caller's sessions (user_id = auth.uid()) per
+// the M5 RLS rewrite; the userId parameter is retained for API symmetry with
+// the other query helpers.
 export async function getSessionForOperation(
   userId: string,
   operationId: string,
@@ -127,31 +107,53 @@ export async function getSessionForOperation(
   const { data, error } = await supabase
     .from("sessions")
     .select(
-      "id, operation_id, transcript, output, reflection, replay_narrative, scar_text, scar_source_excerpt, wisdom_text, wisdom_source_excerpt, xp_delta, submitted_at",
+      "id, operation_id, drill_id, user_id, transcript, output, reflection, replay_narrative, scar_text, scar_source_excerpt, wisdom_text, wisdom_source_excerpt, xp_delta, submitted_at",
     )
     .eq("operation_id", operationId)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
+  return rowFromDbSession(data);
+}
 
-  return {
-    id: data.id,
-    operationId: data.operation_id,
-    transcript: data.transcript,
-    output: data.output,
-    reflection: data.reflection,
-    replayNarrative: data.replay_narrative,
-    scar:
-      data.scar_text !== null && data.scar_source_excerpt !== null
-        ? { text: data.scar_text, sourceExcerpt: data.scar_source_excerpt }
-        : null,
-    wisdom:
-      data.wisdom_text !== null && data.wisdom_source_excerpt !== null
-        ? { text: data.wisdom_text, sourceExcerpt: data.wisdom_source_excerpt }
-        : null,
-    xpDelta: data.xp_delta,
-    submittedAt: data.submitted_at,
-  };
+// Returns the set of drill ids the given user has already completed. Used
+// by the drills index to dim completed drills and by the drill detail page
+// to redirect to /drill/[id]/replay when the user has already submitted.
+export async function getDrillIdsCompletedByUser(
+  userId: string,
+): Promise<Set<string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("drill_id")
+    .eq("user_id", userId)
+    .not("drill_id", "is", null);
+  if (error) throw error;
+  const ids = new Set<string>();
+  for (const row of data ?? []) {
+    if (row.drill_id !== null) ids.add(row.drill_id);
+  }
+  return ids;
+}
+
+// Returns the session for a given drill if it exists, else null. Same
+// pattern as getSessionForOperation. RLS scopes to the caller via user_id.
+export async function getSessionForDrill(
+  userId: string,
+  drillId: string,
+): Promise<SessionRow | null> {
+  void userId;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("sessions")
+    .select(
+      "id, operation_id, drill_id, user_id, transcript, output, reflection, replay_narrative, scar_text, scar_source_excerpt, wisdom_text, wisdom_source_excerpt, xp_delta, submitted_at",
+    )
+    .eq("drill_id", drillId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return rowFromDbSession(data);
 }
 
 // Returns the set of operation ids (from the given list) that already have a
@@ -167,21 +169,38 @@ export async function getOperationIdsWithSessions(
     .select("operation_id")
     .in("operation_id", [...operationIds]);
   if (error) throw error;
-  return new Set((data ?? []).map((row) => row.operation_id));
+  const ids = new Set<string>();
+  for (const row of data ?? []) {
+    if (row.operation_id !== null) ids.add(row.operation_id);
+  }
+  return ids;
 }
 
-// All the scars and wisdom an agent has accumulated across every project
-// they have shaped. Ordered oldest → newest by session submission time. Used
-// by buildSystemPrompt to populate the scar/wisdom sections of the prompt
-// the user pastes into their AI tool.
+// All the scars and wisdom an agent has accumulated. Ordered oldest → newest
+// by session submission time. Used by buildSystemPrompt to populate the
+// scar/wisdom sections of the prompt the user pastes into their AI tool.
+//
+// V1 simplification: one active agent per user means the agent's history =
+// the user's session history. We look up user_id from the agent first, then
+// query sessions by user_id. V2 with the death mechanic will need agent_id
+// stored on sessions to disambiguate per-agent history; for now, user_id is
+// sufficient and covers both operation sessions and drill sessions in one
+// query.
 export async function getAgentHistory(agentId: string): Promise<AgentHistory> {
   const supabase = await createClient();
+
+  const { data: agent, error: agentErr } = await supabase
+    .from("agents")
+    .select("user_id")
+    .eq("id", agentId)
+    .maybeSingle();
+  if (agentErr) throw agentErr;
+  if (!agent) return { scars: [], wisdom: [] };
+
   const { data, error } = await supabase
     .from("sessions")
-    .select(
-      "scar_text, wisdom_text, submitted_at, operations!inner(project_id, projects!inner(agent_id))",
-    )
-    .eq("operations.projects.agent_id", agentId)
+    .select("scar_text, wisdom_text, submitted_at")
+    .eq("user_id", agent.user_id)
     .order("submitted_at", { ascending: true });
   if (error) throw error;
 
@@ -192,4 +211,51 @@ export async function getAgentHistory(agentId: string): Promise<AgentHistory> {
     if (row.wisdom_text) wisdom.push(row.wisdom_text);
   }
   return { scars, wisdom };
+}
+
+// ---------- Internal mappers ----------
+
+type DbSessionRow = {
+  id: string;
+  operation_id: string | null;
+  drill_id: string | null;
+  user_id: string;
+  transcript: string;
+  output: string;
+  reflection: string;
+  replay_narrative: string;
+  scar_text: string | null;
+  scar_source_excerpt: string | null;
+  wisdom_text: string | null;
+  wisdom_source_excerpt: string | null;
+  xp_delta: number;
+  submitted_at: string;
+};
+
+function rowFromDbSession(row: DbSessionRow): SessionRow {
+  return {
+    id: row.id,
+    operationId: row.operation_id,
+    drillId: row.drill_id,
+    userId: row.user_id,
+    transcript: row.transcript,
+    output: row.output,
+    reflection: row.reflection,
+    replayNarrative: row.replay_narrative,
+    scar:
+      row.scar_text !== null && row.scar_source_excerpt !== null
+        ? { text: row.scar_text, sourceExcerpt: row.scar_source_excerpt }
+        : null,
+    wisdom:
+      row.wisdom_text !== null && row.wisdom_source_excerpt !== null
+        ? { text: row.wisdom_text, sourceExcerpt: row.wisdom_source_excerpt }
+        : null,
+    xpDelta: row.xp_delta,
+    submittedAt: row.submitted_at,
+  };
+}
+
+// The RPC return payload has the same field names as the row.
+function rowFromRpcSession(row: DbSessionRow): SessionRow {
+  return rowFromDbSession(row);
 }

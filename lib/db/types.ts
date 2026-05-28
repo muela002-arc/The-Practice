@@ -12,6 +12,7 @@ export type Database = {
           died_at: string | null;
           xp: number;
           level: number;
+          card_quote: string | null;
         };
         Insert: {
           id?: string;
@@ -21,14 +22,16 @@ export type Database = {
           died_at?: string | null;
           xp?: number;
           level?: number;
+          card_quote?: string | null;
         };
         // M4 relaxes Update to allow the session-submission RPC to mutate
-        // xp + level. Other columns stay outside the typed Update path even
-        // though the RLS policy is broader — application discipline.
+        // xp + level. M5 adds card_quote so the agent card page can cache
+        // its lazy LLM-generated quote on first visit.
         Update: {
           xp?: number;
           level?: number;
           died_at?: string | null;
+          card_quote?: string | null;
         };
         Relationships: [];
       };
@@ -80,7 +83,9 @@ export type Database = {
       sessions: {
         Row: {
           id: string;
-          operation_id: string;
+          operation_id: string | null;
+          drill_id: string | null;
+          user_id: string;
           transcript: string;
           output: string;
           reflection: string;
@@ -94,7 +99,9 @@ export type Database = {
         };
         Insert: {
           id?: string;
-          operation_id: string;
+          operation_id?: string | null;
+          drill_id?: string | null;
+          user_id: string;
           transcript: string;
           output: string;
           reflection: string;
@@ -109,6 +116,49 @@ export type Database = {
         // Sessions are immutable once submitted. V2 may relax for replay
         // regeneration if voice drift surfaces.
         Update: Record<string, never>;
+        Relationships: [];
+      };
+      drills: {
+        Row: {
+          id: string;
+          title: string;
+          prompt: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          prompt: string;
+          created_at?: string;
+        };
+        // Drills are seeded via service role. App never writes.
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      invite_codes: {
+        Row: {
+          id: string;
+          code: string;
+          created_by: string | null;
+          used_by: string | null;
+          used_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          created_by?: string | null;
+          used_by?: string | null;
+          used_at?: string | null;
+          created_at?: string;
+        };
+        // Codes are mutable only by service role at /auth/callback (the
+        // consumption update). App never updates from the client. The Update
+        // type permits used_by + used_at to allow the service-role-typed call.
+        Update: {
+          used_by?: string | null;
+          used_at?: string | null;
+        };
         Relationships: [];
       };
     };
@@ -127,7 +177,8 @@ export type Database = {
       };
       create_session_with_completion: {
         Args: {
-          p_operation_id: string;
+          p_operation_id: string | null;
+          p_drill_id: string | null;
           p_transcript: string;
           p_output: string;
           p_reflection: string;
@@ -141,7 +192,9 @@ export type Database = {
         Returns: {
           session: {
             id: string;
-            operation_id: string;
+            operation_id: string | null;
+            drill_id: string | null;
+            user_id: string;
             transcript: string;
             output: string;
             reflection: string;
